@@ -69,6 +69,7 @@ std::cout << std::endl;
     uint32_t opcode = get_opcode(instruction);
     uint32_t rd = get_rd(instruction);
     uint32_t rs1 = get_rs1(instruction);
+    uint32_t rs2 = get_rs2(instruction);
     uint32_t funct3 = get_funct3(instruction);
 
     switch (opcode) {
@@ -88,7 +89,41 @@ std::cout << std::endl;
             }
         }
             break;
+        case 0x33: {
+            uint32_t val1 = regs[rs1];
+            uint32_t val2 = regs[rs2];
+            uint32_t f7 = get_funct7(instruction);
 
+            switch(funct3) {
+                case 0x0: // ADD or SUB
+                    if (f7 == 0x00) {
+                        // ADD
+                        regs[rd] = val1 + val2;
+                        std::cout << "EXEC: ADD x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    } else if (f7 == 0x20) {
+                        // SUB
+                        regs[rd] = val1 - val2;
+                        std::cout << "EXEC: SUB x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    }
+                    break;
+                case 0x4: // XOR
+                    regs[rd] = val1 ^ val2;
+                    std::cout << "EXEC: XOR x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
+                case 0x6: // OR
+                    regs[rd] = val1 | val2;
+                    std::cout << "EXEC: OR x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
+                case 0x7: // AND
+                    regs[rd] = val1 & val2;
+                    std::cout << "EXEC: AND x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
+                default:
+                    std::cout << "Unknown Funct3 for R-Type: " << funct3 << std::endl;
+                    break;
+            }
+        }
+            break;
         default:
             std::cout << "Unknown Opcode: 0x" << std::hex << opcode << std::endl;
             break;
@@ -128,16 +163,29 @@ std::cout << std::endl;
 int main(){
 CPU my_cpu;
 
-std::vector<uint8_t> sample_program ={0x93, 0x00, 0xA0, 0x00};
+    std::vector<uint8_t> sample_program = {
+        0x93, 0x00, 0xA0, 0x00, // ADDI x1, x0, 10
+        0x13, 0x01, 0x50, 0x00, // ADDI x2, x0, 5
+        0xB3, 0x81, 0x20, 0x00, // ADD x3, x1, x2
+        0x33, 0x82, 0x20, 0x40  // SUB x4, x1, x2
+    };
 my_cpu.load_program(sample_program);
 //1.Fetch
-uint32_t fetched_instruction = my_cpu.fetch();
+// uint32_t fetched_instruction = my_cpu.fetch();
+//
+// my_cpu.execute(fetched_instruction);
+    for (int i = 0; i < 4; i++) {
+        uint32_t inst = my_cpu.fetch();
 
-my_cpu.execute(fetched_instruction);
+        // Safety check: stop if instruction is 0 (empty memory)
+        if (inst == 0) break;
+
+        my_cpu.execute(inst);
+    }
 
     my_cpu.dump_registers();
 
-std::cout<<"Fetched instructions: 0x"<<std::hex<< fetched_instruction<<std::endl;
+// std::cout<<"Fetched instructions: 0x"<<std::hex<< fetched_instruction<<std::endl;
     // 2. Decode
     // uint32_t opcode = my_cpu.get_opcode(fetched_instruction);
     // uint32_t rd     = my_cpu.get_rd(fetched_instruction);
