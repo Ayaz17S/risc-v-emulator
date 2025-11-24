@@ -124,6 +124,41 @@ std::cout << std::endl;
             }
         }
             break;
+        case 0x03: {
+            int32_t imm = get_imm_i(instruction);
+            uint32_t address = regs[rs1]+imm;
+
+            switch (funct3) {
+                case 0x02:
+                    regs[rd] = mem_read_32(address);
+                    std::cout<<"EXEC: LW x"<< rd<< ", "<<imm<<"(x"<< rs1<<")"<<"[Addr:" << address<<" Val: "<<std::hex<<regs[rd]<<"]"<<std::dec<<std::endl;
+                    break;
+                default:
+                    std::cout << "Unknown Load Funct3: " << funct3 << std::endl;
+                    break;
+
+
+            }
+        }
+            break;
+        case 0x23: {
+            int32_t imm = get_imm_s(instruction);
+            uint32_t address = regs[rs1]+imm;
+            uint32_t val= regs[rs2];
+            switch (funct3) {
+                case 0x2:
+                    mem_write_32(address, val);
+                    std::cout << "EXEC: SW x" << rs2 << ", " << imm << "(x" << rs1 << ")"
+                                      << " [Addr: " << address << " Val: " << std::hex << val << "]" << std::dec << std::endl;
+                    break;
+                default:
+                    std::cout << "Unknown Store Funct3: " << funct3 << std::endl;
+                    break;
+
+            }
+        }
+            break;
+
         default:
             std::cout << "Unknown Opcode: 0x" << std::hex << opcode << std::endl;
             break;
@@ -158,16 +193,44 @@ std::cout << std::endl;
     int32_t imm = (int32_t)instruction >> 20;
     return imm;
 }
+    uint32_t mem_read_32(uint32_t address) {
+    if (address + 3 >= MEMORY_SIZE) {
+        std::cout << "Error: Memory Read Out of Bounds at " << address << std::endl;
+        return 0;
+    }
+    return (memory[address+3] << 24) | (memory[address+2] << 16) |
+               (memory[address+1] << 8)  | memory[address];
+}
+
+    void mem_write_32(uint32_t address, uint32_t value) {
+    if (address + 3 >= MEMORY_SIZE) {
+        std::cout << "Error: Memory Write Out of Bounds at " << address << std::endl;
+        return;
+    }
+    memory[address] =value & 0xFF;
+    memory[address+1] = (value>>8)& 0xFF;
+    memory[address+2] = (value>>16) & 0xFF;
+    memory[address+3] = (value>>24) & 0xFF;
+
+
+
+}
+
+    int32_t get_imm_s(uint32_t instruction) {
+    int32_t imm_11_5 = (int32_t)(instruction &0xFE000000)>>20;
+    int32_t imm_4_0 = (instruction>>7)&0x1F;
+    return imm_11_5|imm_4_0;
+}
 };
 
 int main(){
 CPU my_cpu;
 
     std::vector<uint8_t> sample_program = {
-        0x93, 0x00, 0xA0, 0x00, // ADDI x1, x0, 10
-        0x13, 0x01, 0x50, 0x00, // ADDI x2, x0, 5
-        0xB3, 0x81, 0x20, 0x00, // ADD x3, x1, x2
-        0x33, 0x82, 0x20, 0x40  // SUB x4, x1, x2
+        0x93, 0x00, 0x40, 0x06,
+         0x13, 0x01, 0x50, 0x05,
+         0x23, 0xA2, 0x20, 0x00,
+         0x83, 0xA1, 0x40, 0x00
     };
 my_cpu.load_program(sample_program);
 //1.Fetch
