@@ -1,0 +1,11 @@
+# Ignore Build Artifacts
+*.exe
+*.o
+*.dll
+cmake-build-debug/
+build/
+
+# Ignore IDE Settings
+.idea/
+.vscode/
+*.swp
