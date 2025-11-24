@@ -65,6 +65,39 @@ std::cout << std::endl;
 
     return instruction;
 }
+    void execute(uint32_t instruction) {
+    uint32_t opcode = get_opcode(instruction);
+    uint32_t rd = get_rd(instruction);
+    uint32_t rs1 = get_rs1(instruction);
+    uint32_t funct3 = get_funct3(instruction);
+
+    switch (opcode) {
+        case 0x13: {
+            int32_t imm = get_imm_i(instruction);
+            int32_t val1 = regs[rs1];
+
+            switch (funct3) {
+                case 0x00:
+                    regs[rd] = val1 + imm;
+                    std::cout<<"EXEC: ADDI x"<<rd<<", x "<<rs1<<", "<<imm<<std::endl;
+                    break;
+                default:
+                    std::cout << "Unknown Funct3 for OP-IMM: " << funct3 << std::endl;
+                    break;
+
+            }
+        }
+            break;
+
+        default:
+            std::cout << "Unknown Opcode: 0x" << std::hex << opcode << std::endl;
+            break;
+    }
+    regs[0] = 0;
+
+    // Update PC (Move to next instruction)
+    pc += 4;
+}
 
     uint32_t get_opcode(uint32_t instruction) {
     return instruction &0x7F;
@@ -84,6 +117,12 @@ std::cout << std::endl;
     uint32_t get_funct7(uint32_t instruction) {
     return (instruction >> 25) & 0x7F;
 }
+    // Extract I-Type Immediate (Bits 20-31) and Sign Extend
+    int32_t get_imm_i(uint32_t instruction) {
+    // Cast to signed int32 so the shift preserves the sign (Arithmetic Shift)
+    int32_t imm = (int32_t)instruction >> 20;
+    return imm;
+}
 };
 
 int main(){
@@ -94,18 +133,22 @@ my_cpu.load_program(sample_program);
 //1.Fetch
 uint32_t fetched_instruction = my_cpu.fetch();
 
+my_cpu.execute(fetched_instruction);
+
+    my_cpu.dump_registers();
+
 std::cout<<"Fetched instructions: 0x"<<std::hex<< fetched_instruction<<std::endl;
     // 2. Decode
-    uint32_t opcode = my_cpu.get_opcode(fetched_instruction);
-    uint32_t rd     = my_cpu.get_rd(fetched_instruction);
-    uint32_t funct3 = my_cpu.get_funct3(fetched_instruction);
-    uint32_t rs1    = my_cpu.get_rs1(fetched_instruction);
+    // uint32_t opcode = my_cpu.get_opcode(fetched_instruction);
+    // uint32_t rd     = my_cpu.get_rd(fetched_instruction);
+    // uint32_t funct3 = my_cpu.get_funct3(fetched_instruction);
+    // uint32_t rs1    = my_cpu.get_rs1(fetched_instruction);
 
     // 3. Verify Output
-    std::cout << "Opcode : 0x" << std::hex << opcode << " (Expect 0x13 for ADDI)" << std::endl;
-    std::cout << "rd     : x"  << std::dec << rd     << " (Expect 1)"    << std::endl;
-    std::cout << "funct3 : 0x" << std::hex << funct3 << " (Expect 0)"    << std::endl;
-    std::cout << "rs1    : x"  << std::dec << rs1    << " (Expect 0)"    << std::endl;
+    // std::cout << "Opcode : 0x" << std::hex << opcode << " (Expect 0x13 for ADDI)" << std::endl;
+    // std::cout << "rd     : x"  << std::dec << rd     << " (Expect 1)"    << std::endl;
+    // std::cout << "funct3 : 0x" << std::hex << funct3 << " (Expect 0)"    << std::endl;
+    // std::cout << "rs1    : x"  << std::dec << rs1    << " (Expect 0)"    << std::endl;
 // my_cpu.dump_registers();
 
 return 0;
