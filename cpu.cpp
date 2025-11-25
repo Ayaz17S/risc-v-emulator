@@ -28,6 +28,7 @@ memory.resize(MEMORY_SIZE,0);
 //x0 is hardwired to 0 in risc -v
 //we should not do anything and ensure regs[0] is never overwritten or reset it manually
 regs[0] = 0;
+    regs[2]= MEMORY_SIZE;
 
 }
 
@@ -77,12 +78,27 @@ std::cout << std::endl;
         case 0x13: {
             int32_t imm = get_imm_i(instruction);
             int32_t val1 = regs[rs1];
+            uint32_t uval1 = (uint32_t) regs[rs1];
+            int shamt = imm &0x1F;
 
             switch (funct3) {
-                case 0x00:
+                case 0x0:
                     regs[rd] = val1 + imm;
                     std::cout<<"EXEC: ADDI x"<<rd<<", x "<<rs1<<", "<<imm<<std::endl;
                     break;
+                    case 0x1://SLLI
+                    regs[rd] = val1<<shamt;
+                    std::cout << "EXEC: SLLI x" << rd << ", x" << rs1 << ", " << shamt << std::endl;
+                    break;
+                case 0x5:
+                    if ((instruction>>30)&1) {
+                        regs[rd] = val1 >> shamt;
+                        std::cout << "EXEC: SRAI x" << rd << ", x" << rs1 << ", " << shamt << std::endl;
+                    }else {
+                        regs[rd] = uval1 >> shamt;
+                        std::cout << "EXEC: SRLI x" << rd << ", x" << rs1 << ", " << shamt << std::endl;
+                    }
+                        break;
                 default:
                     std::cout << "Unknown Funct3 for OP-IMM: " << funct3 << std::endl;
                     break;
@@ -94,6 +110,8 @@ std::cout << std::endl;
             uint32_t val1 = regs[rs1];
             uint32_t val2 = regs[rs2];
             uint32_t f7 = get_funct7(instruction);
+            int shamt = val2 & 0x1F;
+
 
             switch(funct3) {
                 case 0x0: // ADD or SUB
@@ -107,6 +125,19 @@ std::cout << std::endl;
                         std::cout << "EXEC: SUB x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
                     }
                     break;
+                case 0x1://SLL
+                    regs[rd] = val1 << shamt;
+                    std::cout << "EXEC: SLL x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
+                case 0x5:
+                    if ((instruction>>30)&1) {
+                        regs[rd] = (int32_t)val1 >> shamt;
+                        std::cout << "EXEC: SRA x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    } else {
+                        regs[rd] = val1 >> shamt;
+                        std::cout << "EXEC: SRL x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    }
+                        break;
                 case 0x4: // XOR
                     regs[rd] = val1 ^ val2;
                     std::cout << "EXEC: XOR x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
@@ -215,6 +246,21 @@ std::cout << std::endl;
     }
             break;
 
+        case 0x37://LUI
+        {
+            int32_t imm = get_imm_u(instruction);
+            regs[rd]= imm;
+            std::cout<<"EXEC: LUI x"<<rd<<", "<<std::hex<<imm<<std::dec<<std::endl;
+        }
+            break;
+        case 0x17://AUIPC
+        {
+            int32_t imm = get_imm_u(instruction);
+            regs[rd]= pc+imm;
+            std::cout<<"EXEC: AUIPC x"<<rd<<", offset"<<std::hex << imm << std::dec << std::endl;
+
+        }
+        break;
 
         default:
             std::cout << "Unknown Opcode: 0x" << std::hex << opcode << std::endl;
@@ -309,30 +355,33 @@ std::cout << std::endl;
     imm|= ((instruction>>21)&0x3FF)<<1;
     return imm;
 }
+    int32_t get_imm_u(uint32_t instruction) {
+        return  (int32_t)(instruction&0xFFFFF000);
+    }
 };
 
 int main(){
 CPU my_cpu;
 
-    std::vector<uint8_t> sample_program = {
-        0xEF, 0x00, 0x80, 0x00, // JAL x1, 8
-        0x13, 0x00, 0x00, 0x00, // STOP (PC=4)
-        0x13, 0x01, 0x80, 0x04, // ADDI x2, x0, 72 ('H')
-        0x23, 0x28, 0x20, 0x0E, // SW x2, 240(x0)  <-- FIXED LINE
-        0x67, 0x80, 0x00, 0x00  // JALR x0, 0(x1)
-    };
-my_cpu.load_program(sample_program);
+//     std::vector<uint8_t> sample_program = {
+//         0xEF, 0x00, 0x80, 0x00, // JAL x1, 8
+//         0x13, 0x00, 0x00, 0x00, // STOP (PC=4)
+//         0x13, 0x01, 0x80, 0x04, // ADDI x2, x0, 72 ('H')
+//         0x23, 0x28, 0x20, 0x0E, // SW x2, 240(x0)  <-- FIXED LINE
+//         0x67, 0x80, 0x00, 0x00  // JALR x0, 0(x1)
+//     };
+// my_cpu.load_program(sample_program);
 //1.Fetch
 // uint32_t fetched_instruction = my_cpu.fetch();
 //
 // my_cpu.execute(fetched_instruction);
-    for (int i = 0; i < 6; i++) {
-        std::cout << "--- Cycle " << i << " ---" << std::endl;
-        uint32_t inst = my_cpu.fetch();
-        if (inst == 0 && my_cpu.pc >= sample_program.size()) break; // Stop if end of program
-        my_cpu.execute(inst);
-        // my_cpu.dump_registers();
-    }
+    // for (int i = 0; i < 6; i++) {
+    //     std::cout << "--- Cycle " << i << " ---" << std::endl;
+    //     uint32_t inst = my_cpu.fetch();
+    //     if (inst == 0 && my_cpu.pc >= sample_program.size()) break; // Stop if end of program
+    //     my_cpu.execute(inst);
+    //     // my_cpu.dump_registers();
+    // }
 
 
 
@@ -349,6 +398,55 @@ my_cpu.load_program(sample_program);
     // std::cout << "funct3 : 0x" << std::hex << funct3 << " (Expect 0)"    << std::endl;
     // std::cout << "rs1    : x"  << std::dec << rs1    << " (Expect 0)"    << std::endl;
 // my_cpu.dump_registers();
+    std::vector<uint8_t> fib_program = {
+        // Init: x1=0, x2=1, x3=7, x4=0
+        0x93, 0x00, 0x00, 0x00,
+        0x13, 0x01, 0x10, 0x00,
+        0x93, 0x01, 0x70, 0x00,
+        0x13, 0x02, 0x00, 0x00,
+
+        // LOOP START (Offset 16)
+        // BEQ x4, x3, +24 (Jump to END at offset 40)
+        // FIXED: Changed 0x06 to 0x0C. (0xC << 1 = 24 bytes)
+        0x63, 0x0C, 0x32, 0x00,
+
+        // ADD x5, x0, x2 (temp = next)
+        0xB3, 0x02, 0x20, 0x00,
+
+        // ADD x2, x1, x2 (next = curr + next)
+        // FIXED: Changed 0x01 to 0x81. This sets rs1 to x1 instead of x0.
+        0x33, 0x81, 0x20, 0x00,
+
+        // ADD x1, x0, x5 (curr = temp)
+        0xB3, 0x00, 0x50, 0x00,
+
+        // ADDI x4, x4, 1 (i++)
+        0x13, 0x02, 0x12, 0x00,
+
+        // BEQ x0, x0, -20 (Loop back)
+        0xE3, 0x06, 0x00, 0xFE,
+
+        // END (Offset 40)
+        0x23, 0x28, 0x10, 0x0E, // SW x1, 240(x0)
+        0x13, 0x00, 0x00, 0x00  // NOP
+    };
+
+    my_cpu.load_program(fib_program);
+
+    std::cout << "Calculating Fibonacci..." << std::endl;
+
+    // Run for enough cycles to finish the loop
+    for (int i = 0; i < 50; i++) {
+        uint32_t inst = my_cpu.fetch();
+        if (inst == 0 && my_cpu.pc >= fib_program.size()) break;
+        my_cpu.execute(inst);
+    }
+
+    my_cpu.dump_registers();
+
+    // VERIFICATION:
+    // x1 (curr) should be 13 (0xD)
+    // x2 (next) should be 21 (0x15)
 
 return 0;
 }
