@@ -72,6 +72,7 @@ std::cout << std::endl;
     uint32_t rs2 = get_rs2(instruction);
     uint32_t funct3 = get_funct3(instruction);
 
+    uint32_t next_pc = pc + 4;
     switch (opcode) {
         case 0x13: {
             int32_t imm = get_imm_i(instruction);
@@ -158,6 +159,62 @@ std::cout << std::endl;
             }
         }
             break;
+        case 0x63: {
+            int32_t imm = get_imm_b(instruction);
+            uint32_t val1 = regs[rs1];
+            uint32_t val2 = regs[rs2];
+            bool take_branch = false;
+
+            switch (funct3) {
+                case 0x0: //BEQ
+                    take_branch = (val1 == val2);
+                    std::cout<< "EXEC: BEQ x"<<rs1<<", x"<<rs2<<", offset"<<imm<<(take_branch? "[TAKEN]":" [NOT TAKEN]")<<std::endl;
+                    break;
+                case 0x1: //BNE
+                    take_branch = (val1 != val2);
+                    std::cout << "EXEC: BNE x" << rs1 << ", x" << rs2 << ", offset " << imm << (take_branch ? " [TAKEN]" : " [NOT TAKEN]") << std::endl;
+                    break;
+
+                case 0x4: //BLT
+                    take_branch = ((int32_t)val1<(int32_t)val2);
+                    std::cout << "EXEC: BLT x" << rs1 << ", x" << rs2 << ", offset " << imm << std::endl;
+                    break;
+                case 0x5://BGE
+                    take_branch = ((int32_t)val1 >= (int32_t)val2);
+                    std::cout << "EXEC: BGE x" << rs1 << ", x" << rs2 << ", offset " << imm << std::endl;
+                    break;
+                default:
+                    std::cout << "Unknown Branch Funct3: " << funct3 << std::endl;
+            }
+            if (take_branch) {
+                next_pc = pc + imm; // Jump!
+            }
+        }
+            break;
+        case 0x6F: //JAL
+            {
+            int32_t imm = get_imm_j(instruction);
+
+            regs[rd] = pc +4;
+
+            next_pc = pc + imm;
+            std::cout<< "EXEC: JAL x"<<rd<<", offset"<<imm<<std::endl;
+
+        }
+    break;
+
+    case 0x67://JALR
+            {
+        int32_t imm = get_imm_i(instruction);
+        uint32_t val1 = regs[rs1];
+
+        regs[rd] = pc +4;
+
+        next_pc = (val1 + imm)&0xFFFFFFFE;
+        std::cout << "EXEC: JALR x" << rd << ", x" << rs1 << ", " << imm << std::endl;
+    }
+            break;
+
 
         default:
             std::cout << "Unknown Opcode: 0x" << std::hex << opcode << std::endl;
@@ -166,8 +223,8 @@ std::cout << std::endl;
     regs[0] = 0;
 
     // Update PC (Move to next instruction)
-    pc += 4;
-}
+    pc = next_pc;
+};
 
     uint32_t get_opcode(uint32_t instruction) {
     return instruction &0x7F;
@@ -203,6 +260,12 @@ std::cout << std::endl;
 }
 
     void mem_write_32(uint32_t address, uint32_t value) {
+
+    if (address ==0x000000F0) {
+        std::cout<<"UART OUT: "<<(char)(value &0xFF)<<std::endl;
+        return;
+    }
+
     if (address + 3 >= MEMORY_SIZE) {
         std::cout << "Error: Memory Write Out of Bounds at " << address << std::endl;
         return;
@@ -221,32 +284,57 @@ std::cout << std::endl;
     int32_t imm_4_0 = (instruction>>7)&0x1F;
     return imm_11_5|imm_4_0;
 }
+    int32_t get_imm_b(uint32_t instruction) {
+    int32_t bit_12 = (int32_t)(instruction&0x80000000)>>19;
+    int32_t imm = 0;
+
+    imm|= ((int32_t)instruction>>31)<<12;
+
+    imm|= ((instruction>>7)&0x1)<<11;
+
+    imm|= ((instruction>>25)&0x3F)<<5;
+
+    imm|= ((instruction>>8) & 0xF)<<1;
+    return imm;
+}
+    int32_t get_imm_j(uint32_t instruction) {
+    int32_t imm =0;
+
+    imm|= ((int32_t)instruction>>31)<<20;
+
+    imm |= (instruction & 0xFF000) ;
+
+    imm|= ((instruction>>20)&0x1)<<11;
+
+    imm|= ((instruction>>21)&0x3FF)<<1;
+    return imm;
+}
 };
 
 int main(){
 CPU my_cpu;
 
     std::vector<uint8_t> sample_program = {
-        0x93, 0x00, 0x40, 0x06,
-         0x13, 0x01, 0x50, 0x05,
-         0x23, 0xA2, 0x20, 0x00,
-         0x83, 0xA1, 0x40, 0x00
+        0xEF, 0x00, 0x80, 0x00, // JAL x1, 8
+        0x13, 0x00, 0x00, 0x00, // STOP (PC=4)
+        0x13, 0x01, 0x80, 0x04, // ADDI x2, x0, 72 ('H')
+        0x23, 0x28, 0x20, 0x0E, // SW x2, 240(x0)  <-- FIXED LINE
+        0x67, 0x80, 0x00, 0x00  // JALR x0, 0(x1)
     };
 my_cpu.load_program(sample_program);
 //1.Fetch
 // uint32_t fetched_instruction = my_cpu.fetch();
 //
 // my_cpu.execute(fetched_instruction);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 6; i++) {
+        std::cout << "--- Cycle " << i << " ---" << std::endl;
         uint32_t inst = my_cpu.fetch();
-
-        // Safety check: stop if instruction is 0 (empty memory)
-        if (inst == 0) break;
-
+        if (inst == 0 && my_cpu.pc >= sample_program.size()) break; // Stop if end of program
         my_cpu.execute(inst);
+        // my_cpu.dump_registers();
     }
 
-    my_cpu.dump_registers();
+
 
 // std::cout<<"Fetched instructions: 0x"<<std::hex<< fetched_instruction<<std::endl;
     // 2. Decode
