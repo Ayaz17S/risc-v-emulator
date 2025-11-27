@@ -470,43 +470,43 @@ CPU my_cpu;
     // std::cout << "funct3 : 0x" << std::hex << funct3 << " (Expect 0)"    << std::endl;
     // std::cout << "rs1    : x"  << std::dec << rs1    << " (Expect 0)"    << std::endl;
 // my_cpu.dump_registers();
-    std::vector<uint8_t> fib_program = {
-        // Init: x1=0, x2=1, x3=7, x4=0
-        0x93, 0x00, 0x00, 0x00,
-        0x13, 0x01, 0x10, 0x00,
-        0x93, 0x01, 0x70, 0x00,
-        0x13, 0x02, 0x00, 0x00,
-
-        // LOOP START (Offset 16)
-        // BEQ x4, x3, +24 (Jump to END at offset 40)
-        // FIXED: Changed 0x06 to 0x0C. (0xC << 1 = 24 bytes)
-        0x63, 0x0C, 0x32, 0x00,
-
-        // ADD x5, x0, x2 (temp = next)
-        0xB3, 0x02, 0x20, 0x00,
-
-        // ADD x2, x1, x2 (next = curr + next)
-        // FIXED: Changed 0x01 to 0x81. This sets rs1 to x1 instead of x0.
-        0x33, 0x81, 0x20, 0x00,
-
-        // ADD x1, x0, x5 (curr = temp)
-        0xB3, 0x00, 0x50, 0x00,
-
-        // ADDI x4, x4, 1 (i++)
-        0x13, 0x02, 0x12, 0x00,
-
-        // BEQ x0, x0, -20 (Loop back)
-        0xE3, 0x06, 0x00, 0xFE,
-
-        // END (Offset 40)
-        0x23, 0x28, 0x10, 0x0E, // SW x1, 240(x0)
-        0x13, 0x00, 0x00, 0x00  // NOP
-    };
-    create_test_binary("fib.bin", fib_program);
-
-    if (!my_cpu.load_from_file("fib.bin")) {
-        return 1;
-    }
+    // std::vector<uint8_t> fib_program = {
+    //     // Init: x1=0, x2=1, x3=7, x4=0
+    //     0x93, 0x00, 0x00, 0x00,
+    //     0x13, 0x01, 0x10, 0x00,
+    //     0x93, 0x01, 0x70, 0x00,
+    //     0x13, 0x02, 0x00, 0x00,
+    //
+    //     // LOOP START (Offset 16)
+    //     // BEQ x4, x3, +24 (Jump to END at offset 40)
+    //     // FIXED: Changed 0x06 to 0x0C. (0xC << 1 = 24 bytes)
+    //     0x63, 0x0C, 0x32, 0x00,
+    //
+    //     // ADD x5, x0, x2 (temp = next)
+    //     0xB3, 0x02, 0x20, 0x00,
+    //
+    //     // ADD x2, x1, x2 (next = curr + next)
+    //     // FIXED: Changed 0x01 to 0x81. This sets rs1 to x1 instead of x0.
+    //     0x33, 0x81, 0x20, 0x00,
+    //
+    //     // ADD x1, x0, x5 (curr = temp)
+    //     0xB3, 0x00, 0x50, 0x00,
+    //
+    //     // ADDI x4, x4, 1 (i++)
+    //     0x13, 0x02, 0x12, 0x00,
+    //
+    //     // BEQ x0, x0, -20 (Loop back)
+    //     0xE3, 0x06, 0x00, 0xFE,
+    //
+    //     // END (Offset 40)
+    //     0x23, 0x28, 0x10, 0x0E, // SW x1, 240(x0)
+    //     0x13, 0x00, 0x00, 0x00  // NOP
+    // };
+    // create_test_binary("fib.bin", fib_program);
+    //
+    // if (!my_cpu.load_from_file("fib.bin")) {
+    //     return 1;
+    // }
 
     std::cout << "Starting Execution..." << std::endl;
     // my_cpu.load_program(fib_program);
@@ -514,12 +514,45 @@ CPU my_cpu;
     // std::cout << "Calculating Fibonacci..." << std::endl;
 
     // Run for enough cycles to finish the loop
-    for (int i = 0; i < 50; i++) {
+    // for (int i = 0; i < 50; i++) {
+    //     uint32_t inst = my_cpu.fetch();
+    //     if (inst == 0 && my_cpu.pc >= fib_program.size()) break;
+    //     my_cpu.execute(inst);
+    // }
+    std::vector<uint8_t> slt_program = {
+        // Init: x10 = -1, x11 = 1
+        0x13, 0x05, 0xF0, 0xFF,
+        0x93, 0x05, 0x10, 0x00,
+
+        // Test 1: Signed Comparison (SLT x1, x10, x11)
+        // FIXED: 0xB3 (Odd Dest) instead of 0x33
+        0xB3, 0x20, 0xB5, 0x00,
+
+        // Test 2: Unsigned Comparison (SLTU x2, x10, x11)
+        // 0x33 is correct (Even Dest x2)
+        0x33, 0x31, 0xB5, 0x00,
+
+        // Test 3: Byte Store/Load
+        0x13, 0x06, 0xB0, 0x0A,
+        0x13, 0x07, 0x40, 0x06,
+        0x23, 0x00, 0xC7, 0x00,
+
+        // Load back into x3
+        // FIXED: 0x83 (Odd Dest x3) instead of 0x03
+        0x83, 0x01, 0x07, 0x00,
+
+        0x13, 0x00, 0x00, 0x00
+    };
+
+
+    create_test_binary("slt_test.bin", slt_program);
+    my_cpu.load_from_file("slt_test.bin");
+
+    for (int i = 0; i < 10; i++) {
         uint32_t inst = my_cpu.fetch();
-        if (inst == 0 && my_cpu.pc >= fib_program.size()) break;
+        if (inst == 0) break;
         my_cpu.execute(inst);
     }
-
     my_cpu.dump_registers();
 
     // VERIFICATION:
