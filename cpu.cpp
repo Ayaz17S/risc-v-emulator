@@ -5,6 +5,7 @@
 #include<vector>
 #include<iomanip>
 #include<cstdint>
+#include <fstream>
 
 const size_t MEMORY_SIZE = 1024*4;
 
@@ -66,6 +67,24 @@ std::cout << std::endl;
 
     return instruction;
 }
+    bool load_from_file(const std::string& file_name) {
+    std::ifstream file(file_name, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << file_name << std::endl;
+        return false;
+    }
+    std::streamsize size = file.tellg();
+    file.seekg(0,std::ios::beg);
+
+    if (size > MEMORY_SIZE) {
+        std::cerr << "Warning: File size (" << size << ") is larger than memory (" << MEMORY_SIZE << "). Truncating." << std::endl;
+        size = MEMORY_SIZE;
+    }
+    file.read((char*)memory.data(), size);
+    file.close();
+    std::cout << "Successfully loaded " << size << " bytes from " << file_name << std::endl;
+    return true;
+}
     void execute(uint32_t instruction) {
     uint32_t opcode = get_opcode(instruction);
     uint32_t rd = get_rd(instruction);
@@ -89,6 +108,15 @@ std::cout << std::endl;
                     case 0x1://SLLI
                     regs[rd] = val1<<shamt;
                     std::cout << "EXEC: SLLI x" << rd << ", x" << rs1 << ", " << shamt << std::endl;
+                    break;
+                case 0x2://SLTI
+                    regs[rd] =((int32_t)val1<imm)?1:0;
+                    std::cout << "EXEC: SLTI x" << rd << ", x" << rs1 << ", " << imm << std::endl;
+                    break;
+
+                case 0x3://SLTIU
+                    regs[rd] = (val1 < (uint32_t)imm) ? 1 : 0;
+                    std::cout << "EXEC: SLTIU x" << rd << ", x" << rs1 << ", " << imm << std::endl;
                     break;
                 case 0x5:
                     if ((instruction>>30)&1) {
@@ -129,6 +157,14 @@ std::cout << std::endl;
                     regs[rd] = val1 << shamt;
                     std::cout << "EXEC: SLL x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
                     break;
+                case 0x2://SLT
+                    regs[rd]=((int32_t)val1<(int32_t)val2)?1:0;
+                    std::cout << "EXEC: SLT x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
+                case 0x3://SLTU
+                    regs[rd] =(val1<val2)?1:0;
+                    std::cout << "EXEC: SLTU x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                    break;
                 case 0x5:
                     if ((instruction>>30)&1) {
                         regs[rd] = (int32_t)val1 >> shamt;
@@ -159,36 +195,67 @@ std::cout << std::endl;
         case 0x03: {
             int32_t imm = get_imm_i(instruction);
             uint32_t address = regs[rs1]+imm;
+            uint32_t loaded_val =0;
+
+            uint8_t b0 =memory[address];
+            uint16_t h0 =memory[address] | (memory[address+1]<<8);
 
             switch (funct3) {
-                case 0x02:
-                    regs[rd] = mem_read_32(address);
-                    std::cout<<"EXEC: LW x"<< rd<< ", "<<imm<<"(x"<< rs1<<")"<<"[Addr:" << address<<" Val: "<<std::hex<<regs[rd]<<"]"<<std::dec<<std::endl;
+                case 0x0://LB
+                    loaded_val =(int8_t)b0;
+                    std::cout << "EXEC: LB x" << rd << "..." << std::endl;
+                    break;
+                case 0x1://LH
+                    loaded_val = (int16_t)h0;
+                    std::cout << "EXEC: LH x" << rd << "..." << std::endl;
+                    break;
+                case 0x02://LW
+                    loaded_val = mem_read_32(address);
+                    std::cout << "EXEC: LW x" << rd << "..." << std::endl;
+                    break;
+                case 0x04://LBU
+                    loaded_val = b0;
+                    std::cout << "EXEC: LBU x" << rd << "..." << std::endl;
+                    break;
+                case 0x05://LHU
+                    loaded_val = h0;std::cout << "EXEC: LHU x" << rd << "..." << std::endl;
                     break;
                 default:
                     std::cout << "Unknown Load Funct3: " << funct3 << std::endl;
-                    break;
-
-
             }
+            regs[rd] = loaded_val;
         }
             break;
         case 0x23: {
             int32_t imm = get_imm_s(instruction);
             uint32_t address = regs[rs1]+imm;
             uint32_t val= regs[rs2];
+
+            if (address==0xF0 && funct3==0x0) {
+                std::cout << "UART OUT: " << (char)(val & 0xFF) << std::endl;
+                break;
+            }
+
             switch (funct3) {
-                case 0x2:
+                case 0x0: // SB (Store Byte)
+                    memory[address] = val & 0xFF;
+                    std::cout << "EXEC: SB..." << std::endl;
+                    break;
+                case 0x1: // SH (Store Half)
+                    memory[address]   = val & 0xFF;
+                    memory[address+1] = (val >> 8) & 0xFF;
+                    std::cout << "EXEC: SH..." << std::endl;
+                    break;
+                case 0x2: // SW (Store Word)
                     mem_write_32(address, val);
-                    std::cout << "EXEC: SW x" << rs2 << ", " << imm << "(x" << rs1 << ")"
-                                      << " [Addr: " << address << " Val: " << std::hex << val << "]" << std::dec << std::endl;
+                    std::cout << "EXEC: SW..." << std::endl;
                     break;
                 default:
                     std::cout << "Unknown Store Funct3: " << funct3 << std::endl;
-                    break;
-
             }
         }
+            break;
+
             break;
         case 0x63: {
             int32_t imm = get_imm_b(instruction);
@@ -359,7 +426,12 @@ std::cout << std::endl;
         return  (int32_t)(instruction&0xFFFFF000);
     }
 };
-
+void create_test_binary(const std::string &file_name, const std::vector<uint8_t> &data) {
+    std::ofstream file(file_name, std::ios::binary);
+    file.write((const char*)data.data(), data.size());
+    file.close();
+    std::cout << "File created: " << file_name << std::endl;
+}
 int main(){
 CPU my_cpu;
 
@@ -430,10 +502,16 @@ CPU my_cpu;
         0x23, 0x28, 0x10, 0x0E, // SW x1, 240(x0)
         0x13, 0x00, 0x00, 0x00  // NOP
     };
+    create_test_binary("fib.bin", fib_program);
 
-    my_cpu.load_program(fib_program);
+    if (!my_cpu.load_from_file("fib.bin")) {
+        return 1;
+    }
 
-    std::cout << "Calculating Fibonacci..." << std::endl;
+    std::cout << "Starting Execution..." << std::endl;
+    // my_cpu.load_program(fib_program);
+    //
+    // std::cout << "Calculating Fibonacci..." << std::endl;
 
     // Run for enough cycles to finish the loop
     for (int i = 0; i < 50; i++) {
