@@ -139,7 +139,34 @@ std::cout << std::endl;
             uint32_t val2 = regs[rs2];
             uint32_t f7 = get_funct7(instruction);
             int shamt = val2 & 0x1F;
+            if (f7==0x01) {
+                switch (funct3) {
+                    case 0x0: //MUL
+                        regs[rd] = val1*val2;
+                        std::cout << "EXEC: MUL x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                        break;
+                    case 0x1://MULH
+                        regs[rd]=(uint32_t)(((int64_t)(int32_t)val1*(int64_t)(int32_t)val2)>>32);
+                        std::cout << "EXEC: MULH x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                        break;
+                    case 0x4://DIV
+                        if (val2 == 0) regs[rd] = -1;
+                        else if ((int32_t)val1==INT32_MIN && (int32_t)val2==-1) regs[rd] = val1;
+                        else regs[rd] = (int32_t)val1 / (int32_t)val2;
+                        std::cout << "EXEC: DIV x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                        break;
+                    case 0x6://REM
+                        if (val2 == 0) regs[rd] = -1;
+                        else if ((int32_t)val1 == INT32_MIN && (int32_t)val2 == -1) regs[rd] = 0;
+                        else regs[rd] = (int32_t)val1 % (int32_t)val2;
+                        std::cout << "EXEC: REM x" << rd << ", x" << rs1 << ", x" << rs2 << std::endl;
+                        break;
+                    default:
+                        std::cout << "Unknown M-Extension Funct3: " << funct3 << std::endl;
 
+                }
+                break;
+            }
 
             switch(funct3) {
                 case 0x0: // ADD or SUB
@@ -508,7 +535,7 @@ CPU my_cpu;
     //     return 1;
     // }
 
-    std::cout << "Starting Execution..." << std::endl;
+    // std::cout << "Starting Execution..." << std::endl;
     // my_cpu.load_program(fib_program);
     //
     // std::cout << "Calculating Fibonacci..." << std::endl;
@@ -519,36 +546,69 @@ CPU my_cpu;
     //     if (inst == 0 && my_cpu.pc >= fib_program.size()) break;
     //     my_cpu.execute(inst);
     // }
-    std::vector<uint8_t> slt_program = {
-        // Init: x10 = -1, x11 = 1
-        0x13, 0x05, 0xF0, 0xFF,
-        0x93, 0x05, 0x10, 0x00,
+    // std::vector<uint8_t> slt_program = {
+    //     // Init: x10 = -1, x11 = 1
+    //     0x13, 0x05, 0xF0, 0xFF,
+    //     0x93, 0x05, 0x10, 0x00,
+    //
+    //     // Test 1: Signed Comparison (SLT x1, x10, x11)
+    //     // FIXED: 0xB3 (Odd Dest) instead of 0x33
+    //     0xB3, 0x20, 0xB5, 0x00,
+    //
+    //     // Test 2: Unsigned Comparison (SLTU x2, x10, x11)
+    //     // 0x33 is correct (Even Dest x2)
+    //     0x33, 0x31, 0xB5, 0x00,
+    //
+    //     // Test 3: Byte Store/Load
+    //     0x13, 0x06, 0xB0, 0x0A,
+    //     0x13, 0x07, 0x40, 0x06,
+    //     0x23, 0x00, 0xC7, 0x00,
+    //
+    //     // Load back into x3
+    //     // FIXED: 0x83 (Odd Dest x3) instead of 0x03
+    //     0x83, 0x01, 0x07, 0x00,
+    //
+    //     0x13, 0x00, 0x00, 0x00
+    // };
+    //
+    //
+    // create_test_binary("slt_test.bin", slt_program);
+    // my_cpu.load_from_file("slt_test.bin");
+    //
+    // for (int i = 0; i < 10; i++) {
+    //     uint32_t inst = my_cpu.fetch();
+    //     if (inst == 0) break;
+    //     my_cpu.execute(inst);
+    // }
+    std::vector<uint8_t> mul_program = {
+        // Init: x11 (Result) = 1, x12 (Counter) = 5
+        0x93, 0x05, 0x10, 0x00, // ADDI x11, x0, 1
+        0x13, 0x06, 0x50, 0x00, // ADDI x12, x0, 5
 
-        // Test 1: Signed Comparison (SLT x1, x10, x11)
-        // FIXED: 0xB3 (Odd Dest) instead of 0x33
-        0xB3, 0x20, 0xB5, 0x00,
+        // LOOP START (Offset 8)
+        // Check if Counter (x12) is 0. If yes, jump to end (+16 bytes).
+        0x63, 0x08, 0x06, 0x00,
 
-        // Test 2: Unsigned Comparison (SLTU x2, x10, x11)
-        // 0x33 is correct (Even Dest x2)
-        0x33, 0x31, 0xB5, 0x00,
+        // THE NEW INSTRUCTION: MUL x11, x11, x12
+        // Result = Result * Counter
+        // Note: 0xB3 start byte means it targets odd register x11.
+        0xB3, 0x85, 0xC5, 0x02,
 
-        // Test 3: Byte Store/Load
-        0x13, 0x06, 0xB0, 0x0A,
-        0x13, 0x07, 0x40, 0x06,
-        0x23, 0x00, 0xC7, 0x00,
+        // Decrement Counter: x12 = x12 - 1
+        0x13, 0x06, 0xF6, 0xFF,
 
-        // Load back into x3
-        // FIXED: 0x83 (Odd Dest x3) instead of 0x03
-        0x83, 0x01, 0x07, 0x00,
+        // JUMP BACK (-12 bytes)
+        0x6F, 0xF0, 0x5F, 0xFF,
 
-        0x13, 0x00, 0x00, 0x00
+        // END
+        0x13, 0x00, 0x00, 0x00  // NOP
     };
 
+    create_test_binary("mul_test.bin", mul_program);
+    my_cpu.load_from_file("mul_test.bin");
 
-    create_test_binary("slt_test.bin", slt_program);
-    my_cpu.load_from_file("slt_test.bin");
-
-    for (int i = 0; i < 10; i++) {
+    // Run enough cycles to finish the loop
+    for (int i = 0; i < 40; i++) {
         uint32_t inst = my_cpu.fetch();
         if (inst == 0) break;
         my_cpu.execute(inst);
