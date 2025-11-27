@@ -2,6 +2,7 @@
 *.exe
 *.o
 *.dll
+*.bin
 cmake-build-debug/
 build/
 
