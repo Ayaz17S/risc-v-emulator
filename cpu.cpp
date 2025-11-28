@@ -8,6 +8,7 @@
 #include <fstream>
 #include<sstream>
 #include <limits>
+#include "assembler.h"
 
 const size_t MEMORY_SIZE = 1024*4;
 
@@ -466,6 +467,8 @@ CPU my_cpu;
 std::string command;
 std::string arg;
 
+    Assembler as;
+
     std::cout << "--- RISC-V Emulator Shell (RV32IM) ---" << std::endl;
     std::cout << "Commands: load <file>, step, run, regs, reset, exit" << std::endl;
 
@@ -512,6 +515,21 @@ std::string arg;
             std::fill(std::begin(my_cpu.regs), std::end(my_cpu.regs), 0);
             my_cpu.regs[2] = MEMORY_SIZE;
             std::cout << "CPU Reset." << std::endl;
+        }
+        else if (command == "asm") {
+            std::string line;
+            std::getline(std::cin, line);
+
+            uint32_t machine_code = as.assemble_line(line);
+
+            std::cout << "Assembled: 0x" << std::hex << machine_code << std::dec << std::endl;
+
+            my_cpu.memory[my_cpu.pc]     = machine_code & 0xFF;
+            my_cpu.memory[my_cpu.pc + 1] = (machine_code >> 8) & 0xFF;
+            my_cpu.memory[my_cpu.pc + 2] = (machine_code >> 16) & 0xFF;
+            my_cpu.memory[my_cpu.pc + 3] = (machine_code >> 24) & 0xFF;
+
+            my_cpu.pc += 4;
         }
         else {
             std::cout << "Unknown command." << std::endl;
