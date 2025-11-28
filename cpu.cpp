@@ -6,6 +6,8 @@
 #include<iomanip>
 #include<cstdint>
 #include <fstream>
+#include<sstream>
+#include <limits>
 
 const size_t MEMORY_SIZE = 1024*4;
 
@@ -461,6 +463,62 @@ void create_test_binary(const std::string &file_name, const std::vector<uint8_t>
 }
 int main(){
 CPU my_cpu;
+std::string command;
+std::string arg;
+
+    std::cout << "--- RISC-V Emulator Shell (RV32IM) ---" << std::endl;
+    std::cout << "Commands: load <file>, step, run, regs, reset, exit" << std::endl;
+
+    while (true) {
+        std::cout << ">> ";
+        std::cin >> command;
+
+        if (command == "exit") {
+            break;
+        }
+        else if (command == "load") {
+            std::cin >> arg;
+            if (my_cpu.load_from_file(arg)) {
+                my_cpu.pc =0;
+                my_cpu.regs[2] =MEMORY_SIZE;
+            }
+        }
+        else if (command == "step") {
+            // Run exactly one instruction
+            uint32_t inst = my_cpu.fetch();
+            if (inst == 0) {
+                std::cout << "End of program (Instruction 0x00)" << std::endl;
+            } else {
+                my_cpu.execute(inst);
+            }
+        }
+        else if (command == "run") {
+            // Run until 0x00 or max cycles
+            std::cout << "Running..." << std::endl;
+            int cycles = 0;
+            while (cycles < 1000) { // Safety limit
+                uint32_t inst = my_cpu.fetch();
+                if (inst == 0) break;
+                my_cpu.execute(inst);
+                cycles++;
+            }
+            std::cout << "Stopped after " << cycles << " cycles." << std::endl;
+        }
+        else if (command == "regs") {
+            my_cpu.dump_registers();
+        }
+        else if (command == "reset") {
+            my_cpu.pc =0;
+            std::fill(std::begin(my_cpu.regs), std::end(my_cpu.regs), 0);
+            my_cpu.regs[2] = MEMORY_SIZE;
+            std::cout << "CPU Reset." << std::endl;
+        }
+        else {
+            std::cout << "Unknown command." << std::endl;
+            // Clear buffer in case of weird input
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+    }
 
 //     std::vector<uint8_t> sample_program = {
 //         0xEF, 0x00, 0x80, 0x00, // JAL x1, 8
@@ -580,40 +638,40 @@ CPU my_cpu;
     //     if (inst == 0) break;
     //     my_cpu.execute(inst);
     // }
-    std::vector<uint8_t> mul_program = {
-        // Init: x11 (Result) = 1, x12 (Counter) = 5
-        0x93, 0x05, 0x10, 0x00, // ADDI x11, x0, 1
-        0x13, 0x06, 0x50, 0x00, // ADDI x12, x0, 5
+    // std::vector<uint8_t> mul_program = {
+    //     // Init: x11 (Result) = 1, x12 (Counter) = 5
+    //     0x93, 0x05, 0x10, 0x00, // ADDI x11, x0, 1
+    //     0x13, 0x06, 0x50, 0x00, // ADDI x12, x0, 5
+    //
+    //     // LOOP START (Offset 8)
+    //     // Check if Counter (x12) is 0. If yes, jump to end (+16 bytes).
+    //     0x63, 0x08, 0x06, 0x00,
+    //
+    //     // THE NEW INSTRUCTION: MUL x11, x11, x12
+    //     // Result = Result * Counter
+    //     // Note: 0xB3 start byte means it targets odd register x11.
+    //     0xB3, 0x85, 0xC5, 0x02,
+    //
+    //     // Decrement Counter: x12 = x12 - 1
+    //     0x13, 0x06, 0xF6, 0xFF,
+    //
+    //     // JUMP BACK (-12 bytes)
+    //     0x6F, 0xF0, 0x5F, 0xFF,
+    //
+    //     // END
+    //     0x13, 0x00, 0x00, 0x00  // NOP
+    // };
 
-        // LOOP START (Offset 8)
-        // Check if Counter (x12) is 0. If yes, jump to end (+16 bytes).
-        0x63, 0x08, 0x06, 0x00,
-
-        // THE NEW INSTRUCTION: MUL x11, x11, x12
-        // Result = Result * Counter
-        // Note: 0xB3 start byte means it targets odd register x11.
-        0xB3, 0x85, 0xC5, 0x02,
-
-        // Decrement Counter: x12 = x12 - 1
-        0x13, 0x06, 0xF6, 0xFF,
-
-        // JUMP BACK (-12 bytes)
-        0x6F, 0xF0, 0x5F, 0xFF,
-
-        // END
-        0x13, 0x00, 0x00, 0x00  // NOP
-    };
-
-    create_test_binary("mul_test.bin", mul_program);
-    my_cpu.load_from_file("mul_test.bin");
-
-    // Run enough cycles to finish the loop
-    for (int i = 0; i < 40; i++) {
-        uint32_t inst = my_cpu.fetch();
-        if (inst == 0) break;
-        my_cpu.execute(inst);
-    }
-    my_cpu.dump_registers();
+    // create_test_binary("mul_test.bin", mul_program);
+    // my_cpu.load_from_file("mul_test.bin");
+    //
+    // // Run enough cycles to finish the loop
+    // for (int i = 0; i < 40; i++) {
+    //     uint32_t inst = my_cpu.fetch();
+    //     if (inst == 0) break;
+    //     my_cpu.execute(inst);
+    // }
+    // my_cpu.dump_registers();
 
     // VERIFICATION:
     // x1 (curr) should be 13 (0xD)
