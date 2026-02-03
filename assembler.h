@@ -74,6 +74,10 @@ public:
                 int32_t imm = std::stoi(trim(arg3));
                 machine_code = (imm<<20)|(rs1<<15)| (0x0<<12)|(rd<<7) | 0x13;
             }
+            else if (mnemonic == "ANDI") {
+                int32_t imm = std::stoi(trim(arg3));
+                machine_code = (imm<<20)|(rs1<<15)| (0x7<<12)|(rd<<7) | 0x13;
+            }
             else if(mnemonic =="ADD") {
                 uint32_t rs2 = parse_reg(arg3);
                 machine_code = (0x00 << 25) | (rs2 << 20) | (rs1 << 15) | (0x0 << 12) | (rd << 7) | 0x33;

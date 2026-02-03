@@ -185,6 +185,10 @@ std::cout << std::endl;
                         std::cout << "EXEC: SRLI x" << rd << ", x" << rs1 << ", " << shamt << std::endl;
                     }
                         break;
+                case 0x7:
+                    regs[rd] = val1&imm;
+                    std::cout<<"EXEC: ANDI x"<<rd<<", x "<<rs1<<", "<<imm<<std::endl;
+                    break;
                 default:
                     std::cout << "Unknown Funct3 for OP-IMM: " << funct3 << std::endl;
                     break;
