@@ -19,6 +19,15 @@ uint32_t pc;
 uint32_t regs[32];
 
 std::vector<uint8_t> memory;
+    //csr constants
+
+    const uint32_t MTVEC = 0x305;
+    const uint32_t MEPC = 0x341;
+    const uint32_t MCAUSE = 0x342;  // Why did we jump?
+    const uint32_t MSTATUS = 0x300;
+
+    uint32_t csrs[4096];
+
 
 //constructor
 CPU(){
@@ -28,12 +37,31 @@ for(int i = 0; i < 32; i++){
 regs[i] = 0;
 }
 
+    for(int i=0; i<4096; i++) csrs[i] = 0;
+
 memory.resize(MEMORY_SIZE,0);
 //x0 is hardwired to 0 in risc -v
 //we should not do anything and ensure regs[0] is never overwritten or reset it manually
 regs[0] = 0;
     regs[2]= MEMORY_SIZE;
 
+}
+
+    void trigger_trap(uint32_t cause) {
+    std::cout << "--- TRAP TRIGGERED (Cause: " << cause << ") ---" << std::endl;
+    //
+    // csrs[MEPC] = pc;
+
+    // 2. Set the cause
+    csrs[MCAUSE] = cause;
+
+    // 3. Jump to the Trap Handler (defined in MTVEC)
+    pc = csrs[MTVEC];
+}
+
+    void return_from_trap() {
+    std::cout << "--- MRET: Returning from Trap ---" << std::endl;
+    pc = csrs[MEPC]; // Restore PC
 }
 
 void load_program(const std::vector<uint8_t>& program_code){
@@ -97,6 +125,33 @@ std::cout << std::endl;
 
     uint32_t next_pc = pc + 4;
     switch (opcode) {
+        case 0x73: {
+            uint32_t f12 = (instruction>>20)&0xFFF;
+
+            if (f12==0) {
+                //std::cout << "[DEBUG] ECALL at PC: " << pc << std::endl;
+                csrs[MEPC] = pc + 4;
+                //std::cout << "[DEBUG] Saved MEPC: " << csrs[MEPC] << std::endl;
+                trigger_trap(11);
+                next_pc = pc;
+            }
+            else if (f12==0x302) {
+               // std::cout << "[DEBUG] MRET executing. MEPC is: " << csrs[MEPC] << std::endl;
+                return_from_trap();
+                next_pc = pc;
+            }
+            else if (funct3==1) {
+                uint32_t csr_addr = (instruction >> 20) & 0xFFF; // Top 12 bits
+                uint32_t temp = csrs[csr_addr];
+                csrs[csr_addr] = regs[rs1]; // Write to CSR
+                regs[rd] = temp;            // Read old value to rd
+                std::cout << "EXEC: CSRRW x" << rd << ", csr[0x" << std::hex << csr_addr << "]" << std::dec << std::endl;
+            }
+        }
+            break;
+
+
+
         case 0x13: {
             int32_t imm = get_imm_i(instruction);
             int32_t val1 = regs[rs1];
@@ -331,6 +386,7 @@ std::cout << std::endl;
         }
     break;
 
+
     case 0x67://JALR
             {
         int32_t imm = get_imm_i(instruction);
@@ -517,19 +573,40 @@ std::string arg;
             std::cout << "CPU Reset." << std::endl;
         }
         else if (command == "asm") {
+            std::cout << "Enter Assembly (Type 'END' to finish, use labels like 'loop:'):" << std::endl;
             std::string line;
             std::getline(std::cin, line);
 
-            uint32_t machine_code = as.assemble_line(line);
+            std::string full_source_code = "";
 
-            std::cout << "Assembled: 0x" << std::hex << machine_code << std::dec << std::endl;
+            while (true) {
+                std::cout << "  ";
+                std::getline(std::cin, line);
+                if (line == "END") break;
+                full_source_code += line + "\n";
+            }
 
-            my_cpu.memory[my_cpu.pc]     = machine_code & 0xFF;
-            my_cpu.memory[my_cpu.pc + 1] = (machine_code >> 8) & 0xFF;
-            my_cpu.memory[my_cpu.pc + 2] = (machine_code >> 16) & 0xFF;
-            my_cpu.memory[my_cpu.pc + 3] = (machine_code >> 24) & 0xFF;
+            std::vector<uint8_t> binary = as.compile(full_source_code, my_cpu.pc);
 
-            my_cpu.pc += 4;
+            std::cout << "Assembled " << binary.size() << " bytes." << std::endl;
+
+            // uint32_t machine_code = as.assemble_line(line);
+            //
+            // std::cout << "Assembled: 0x" << std::hex << machine_code << std::dec << std::endl;
+
+            for (uint8_t byte : binary) {
+                if (my_cpu.pc < MEMORY_SIZE) {
+                    my_cpu.memory[my_cpu.pc] = byte;
+                    my_cpu.pc++;
+                }
+            }
+
+            // my_cpu.memory[my_cpu.pc]     = machine_code & 0xFF;
+            // my_cpu.memory[my_cpu.pc + 1] = (machine_code >> 8) & 0xFF;
+            // my_cpu.memory[my_cpu.pc + 2] = (machine_code >> 16) & 0xFF;
+            // my_cpu.memory[my_cpu.pc + 3] = (machine_code >> 24) & 0xFF;
+
+            // my_cpu.pc += 4;
         }
         else {
             std::cout << "Unknown command." << std::endl;

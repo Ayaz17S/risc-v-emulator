@@ -13,9 +13,10 @@ private:
     std::map<std::string, uint32_t> symbol_table;
 
     std::string trim(const std::string& str) {
-        size_t first = str.find_first_not_of(' ');
-        if (std::string::npos == first) return str;
-        size_t last = str.find_last_not_of(' ');
+        const char* whitespace = " \t\n\r\f\v";
+        size_t first = str.find_first_not_of(whitespace);
+        if (std::string::npos == first) return "";
+        size_t last = str.find_last_not_of(whitespace);
         return str.substr(first, last - first + 1);
     }
 
@@ -27,7 +28,6 @@ private:
     }
 
 public:
-
     std::vector<uint8_t> compile(std::string source_code, uint32_t start_pc) {
         std::vector<std::string> lines;
         std::stringstream ss(source_code);
@@ -35,8 +35,15 @@ public:
 
         uint32_t current_pc = start_pc;
         while (std::getline(ss, line)) {
+            // --- FIX 1: Remove Comments FIRST ---
+            size_t comment_pos = line.find('#');
+            if (comment_pos != std::string::npos) {
+                line = line.substr(0, comment_pos);
+            }
+            // ------------------------------------
+
             line = trim(line);
-            if (line.empty()||line[0]=='#') continue;
+            if (line.empty()) continue; // Skip empty lines
 
             if (line.back() == ':') {
                 std::string label = line.substr(0, line.size()-1);
@@ -45,7 +52,6 @@ public:
             }
             lines.push_back(line);
             current_pc+=4;
-
         }
 
         std::vector<uint8_t> binary;
@@ -54,6 +60,8 @@ public:
             std::stringstream ls(instr);
             std::string mnemonic,arg1,arg2,arg3;
             ls >> mnemonic;
+
+            // Note: This parsing is simple and assumes comma separation
             std::getline(ls,arg1,',');
             std::getline(ls,arg2,',');
             std::getline(ls,arg3);
@@ -74,21 +82,46 @@ public:
                 uint32_t rs2 = parse_reg(arg3);
                 machine_code = (0x01 << 25) | (rs2 << 20) | (rs1 << 15) | (0x0 << 12) | (rd << 7) | 0x33;
             }
-            else if (mnemonic == "BEQ") {
+            else if (mnemonic == "ECALL") {
+                machine_code = 0x00000073;
+            }
+            else if (mnemonic == "MRET") {
+                machine_code = 0x30200073;
+            }
+            else if (mnemonic == "CSRRW") {
+                uint32_t csr = std::stoi(trim(arg3),nullptr,0);
+                machine_code = (csr << 20) | (rs1 << 15) | (0x1 << 12) | (rd << 7) | 0x73;
+            }
+            else if (mnemonic == "BEQ"|| mnemonic == "BNE") {
+                rs1 = parse_reg(arg1);
+                uint32_t rs2 = parse_reg(arg2);
                 std::string label = trim(arg3);
                 uint32_t target = symbol_table[label];
                 int32_t offset = target - current_pc;
 
-                uint32_t imm12 = (offset<<12) &1;
-                uint32_t imm10_5 = (offset<<5) &0x3F;
+                uint32_t imm12 = (offset>>12) & 1;      // Fixed bit shift direction
+                uint32_t imm10_5 = (offset>>5) & 0x3F;  // Fixed bit shift direction
                 uint32_t imm4_1 = (offset >> 1) & 0xF;
                 uint32_t imm11 = (offset >> 11) & 1;
 
-                uint32_t rs2 = parse_reg(arg1);
-                rs1 = parse_reg(arg1);
-                uint32_t rs2_real = parse_reg(arg2);
+                uint32_t funct3 = (mnemonic == "BEQ") ? 0x0 : 0x1;
 
-                machine_code = (imm12 << 31) | (imm10_5 << 25) | (rs2_real << 20) | (rs1 << 15) | (0x0 << 12) | (imm4_1 << 8) | (imm11 << 7) | 0x63;
+                machine_code = (imm12 << 31) | (imm10_5 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (imm4_1 << 8) | (imm11 << 7) | 0x63;
+            }
+            else if (mnemonic == "NOP") {
+                machine_code = 0x13;
+            }
+            else if (mnemonic=="JAL") {
+                std::string label = trim(arg2);
+                uint32_t target = symbol_table[label]; // Lookup clean label
+                int32_t offset = target - current_pc;
+
+                uint32_t imm20 = (offset >> 20) & 1;
+                uint32_t imm10_1 = (offset >> 1) & 0x3FF;
+                uint32_t imm11 = (offset >> 11) & 1;
+                uint32_t imm19_12 = (offset >> 12) & 0xFF;
+
+                machine_code = (imm20 << 31) | (imm10_1 << 21) | (imm11 << 20) | (imm19_12 << 12) | (rd << 7) | 0x6F;
             }
 
             binary.push_back(machine_code&0xFF);
@@ -100,70 +133,5 @@ public:
         }
         return binary;
     }
-    };
-    // std::vector<std::string> tokenize( std::string& line) {
-    //     std::vector<std::string> tokens;
-    //     std::string token;
-    //     for (char c: line) {
-    //         if (c == ',' || c == ' ') {
-    //             if (!token.empty()) {
-    //                 tokens.push_back(token);
-    //                 token = "";
-    //             }
-    //         } else{
-    //             token += c;
-    //         }
-    //     }
-    //     if (!token.empty()) tokens.push_back(token);
-    //     return tokens;
-    // }
-    // uint32_t parse_reg(std::string reg_name) {
-    //     if (reg_name[0]=='x') {
-    //         return std::stoi(reg_name.substr(1));
-    //     }
-    //     return 0;
-    // }
-    // uint32_t assemble_line(std::string line) {
-    //     std::vector<std::string> tokens = tokenize(line);
-    //     if (tokens.empty())return 0;
-    //
-    //     std::string mnemonic = tokens[0];
-    //
-    //     if (mnemonic == "ADDI") {
-    //         uint32_t rd = parse_reg(tokens[1]);
-    //         uint32_t rs1 = parse_reg(tokens[2]);
-    //         int32_t imm = std::stoi(tokens[3]);
-    //
-    //         uint32_t opcode = 0x13;
-    //         uint32_t funct3 = 0x0;
-    //
-    //         return (imm << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
-    //     }
-    //     else if (mnemonic == "ADD") {
-    //         uint32_t rd  = parse_reg(tokens[1]);
-    //         uint32_t rs1 = parse_reg(tokens[2]);
-    //         uint32_t rs2 = parse_reg(tokens[3]);
-    //
-    //         uint32_t opcode = 0x33;
-    //         uint32_t funct3 = 0x0;
-    //         uint32_t funct7 = 0x00;
-    //
-    //         return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
-    //     }
-    //
-    //     else if (mnemonic == "MUL") {
-    //         uint32_t rd  = parse_reg(tokens[1]);
-    //         uint32_t rs1 = parse_reg(tokens[2]);
-    //         uint32_t rs2 = parse_reg(tokens[3]);
-    //
-    //         uint32_t opcode = 0x33;
-    //         uint32_t funct3 = 0x0;
-    //         uint32_t funct7 = 0x01;
-    //
-    //         return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
-    //     }
-    //     std::cout << "Unknown instruction: " << mnemonic << std::endl;
-    //     return 0;
-    // }
-// };
+};
 #endif
